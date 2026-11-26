@@ -3,79 +3,129 @@
 # Run this ONE script to start the entire local dev stack.
 # ============================================================
 
+$ErrorActionPreference = "Stop"
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+function Stop-PortListeners {
+    param([int[]]$Ports)
+    $pidsToStop = Get-NetTCPConnection -LocalPort $Ports -State Listen -ErrorAction SilentlyContinue |
+        Select-Object -ExpandProperty OwningProcess -Unique |
+        Where-Object { $_ -gt 4 }
+
+    foreach ($procId in $pidsToStop) {
+        Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
+        Write-Host "   Stopped PID $procId"
+    }
+    return [bool]$pidsToStop
+}
+
+function Wait-ForPort {
+    param(
+        [int]$Port,
+        [int]$TimeoutSeconds = 30
+    )
+    for ($i = 1; $i -le $TimeoutSeconds; $i++) {
+        Start-Sleep -Seconds 1
+        if (Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue) {
+            return $i
+        }
+    }
+    return $null
+}
+
+function New-RandomHex {
+    param([int]$ByteLength = 32)
+    $bytes = New-Object byte[] $ByteLength
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+        $rng.GetBytes($bytes)
+    } finally {
+        $rng.Dispose()
+    }
+    return ($bytes | ForEach-Object { $_.ToString("x2") }) -join ""
+}
+
+function Read-EnvFile {
+    param([string]$Path)
+    $values = @{}
+    if (-not (Test-Path $Path)) { return $values }
+
+    foreach ($rawLine in Get-Content $Path) {
+        $line = $rawLine.Trim()
+        if ($line -and -not $line.StartsWith("#") -and $line -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$') {
+            $val = $matches[2].Trim()
+            if ($val.Length -ge 2 -and (
+                ($val.StartsWith('"') -and $val.EndsWith('"')) -or
+                ($val.StartsWith("'") -and $val.EndsWith("'"))
+            )) {
+                $val = $val.Substring(1, $val.Length - 2)
+            }
+            $values[$matches[1]] = $val
+        }
+    }
+    return $values
+}
+
+function Get-ConfigValue {
+    param(
+        [hashtable]$Existing,
+        [string]$Key,
+        [scriptblock]$Fallback
+    )
+    if (-not [string]::IsNullOrWhiteSpace($Existing[$Key])) {
+        return $Existing[$Key]
+    }
+    return & $Fallback
+}
+
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "   CarboCred Local Dev Startup" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-
-# ?????? Step 1: Kill any stale processes on our ports ????????????????????????????????????????????????????????????????????????????????????
-Write-Host "[1/6] Clearing stale processes..." -ForegroundColor Yellow
-
-@(4000, 3000, 8545) | ForEach-Object {
-    $port = $_
-    $conn = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
-    if ($conn) {
-        # A port can have multiple owners (e.g. IPv4 + IPv6). Kill all.
-        $conn | ForEach-Object {
-            $procId = $_.OwningProcess
-            if ($procId -gt 4) {  # skip System (PID 4) and Idle (PID 0)
-                Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
-                Write-Host "   Killed PID $procId on port $port"
-            }
-        }
-    }
+# ── Step 1: Clear stale processes on stack ports ─────────────────────────────
+Write-Host "[1/6] Clearing stale processes on ports 4000, 3000, 8545..." -ForegroundColor Yellow
+if (Stop-PortListeners -Ports @(4000, 3000, 8545)) {
+    Start-Sleep -Seconds 1
 }
-# Also kill any leftover node / hardhat processes by name
-Get-Process -Name "node" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-Start-Sleep -Seconds 2
 Write-Host "   Done." -ForegroundColor Green
 
-# ?????? Step 2: Delete stale addresses.json so we always redeploy fresh ??????????????????????????????
-if (Test-Path "$scriptDir\addresses.json") {
-    Remove-Item "$scriptDir\addresses.json" -Force
+# ── Step 2: Start fresh Hardhat node ─────────────────────────────────────────
+$addressesPath = Join-Path $scriptDir "addresses.json"
+if (Test-Path $addressesPath) {
+    Remove-Item $addressesPath -Force
     Write-Host "   Removed stale addresses.json"
 }
 
-# ?????? Step 3: Start Hardhat node in background window ??????????????????????????????????????????????????????????????????????????????
 Write-Host "[2/6] Starting Hardhat node..." -ForegroundColor Yellow
+Start-Process powershell -WorkingDirectory $scriptDir -ArgumentList "-NoExit", "-Command", "npx hardhat node" -WindowStyle Normal
 
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$scriptDir'; npx hardhat node" -WindowStyle Normal
-
-# Wait until port 8545 is actually listening (up to 30 seconds)
 Write-Host "   Waiting for Hardhat RPC to be ready..."
-$hardhatReady = $false
-for ($i = 0; $i -lt 30; $i++) {
-    Start-Sleep -Seconds 1
-    $check = Get-NetTCPConnection -LocalPort 8545 -State Listen -ErrorAction SilentlyContinue
-    if ($check) {
-        $hardhatReady = $true
-        Write-Host "   Hardhat node is up on :8545 (took ~$($i+1)s)" -ForegroundColor Green
-        break
-    }
-}
-if (-not $hardhatReady) {
+$hardhatElapsed = Wait-ForPort -Port 8545 -TimeoutSeconds 30
+if (-not $hardhatElapsed) {
     Write-Host "ERROR: Hardhat node did not start within 30 seconds. Aborting." -ForegroundColor Red
     exit 1
 }
-# Extra buffer so the chain is fully initialised before deploy
-Start-Sleep -Seconds 2
+Write-Host "   Hardhat node is up on :8545 (took ~${hardhatElapsed}s)" -ForegroundColor Green
 
-# ?????? Step 4: Deploy contracts fresh and capture addresses ???????????????????????????????????????????????????????????????
+# ── Step 3: Deploy contracts and capture addresses ───────────────────────────
 Write-Host "[3/6] Deploying contracts..." -ForegroundColor Yellow
+Push-Location $scriptDir
+try {
+    npx hardhat run scripts/getAddresses.js --network localhost
+} finally {
+    Pop-Location
+}
 
-npx hardhat run scripts/getAddresses.js --network localhost
-
-if (-not (Test-Path "$scriptDir\addresses.json")) {
-    Write-Host "ERROR: Deployment failed ??? addresses.json was not created." -ForegroundColor Red
+if (-not (Test-Path $addressesPath)) {
+    Write-Host "ERROR: Deployment failed - addresses.json was not created." -ForegroundColor Red
     Write-Host "       Check the Hardhat window for contract errors." -ForegroundColor Red
     exit 1
 }
 
-$addresses = Get-Content "$scriptDir\addresses.json" | ConvertFrom-Json
-$token  = $addresses.tokenAddress
+$addresses = Get-Content $addressesPath | ConvertFrom-Json
+$token = $addresses.tokenAddress
 $market = $addresses.marketplaceAddress
 
 if (-not $token -or -not $market) {
@@ -86,8 +136,17 @@ if (-not $token -or -not $market) {
 Write-Host "   Token:       $token" -ForegroundColor Green
 Write-Host "   Marketplace: $market" -ForegroundColor Green
 
-# ?????? Step 5: Sync .env files ?????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
+# ── Step 4: Sync .env files ──────────────────────────────────────────────────
 Write-Host "[4/6] Syncing .env files..." -ForegroundColor Yellow
+
+$backendEnvPath = Join-Path $scriptDir "backend\.env"
+$existingBackendEnv = Read-EnvFile -Path $backendEnvPath
+
+$mongoUri = Get-ConfigValue -Existing $existingBackendEnv -Key "MONGO_URI" -Fallback {
+    if (-not [string]::IsNullOrWhiteSpace($env:MONGO_URI)) { $env:MONGO_URI } else { "mongodb://127.0.0.1:27017/carbocred" }
+}
+$jwtSecret = Get-ConfigValue -Existing $existingBackendEnv -Key "JWT_SECRET" -Fallback { New-RandomHex -ByteLength 48 }
+$adminSeedKey = Get-ConfigValue -Existing $existingBackendEnv -Key "ADMIN_SEED_KEY" -Fallback { New-RandomHex -ByteLength 24 }
 
 $backendEnv = @"
 RPC_URL=ws://127.0.0.1:8545
@@ -95,13 +154,13 @@ BACKEND_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4
 CARBON_CREDIT_TOKEN_ADDRESS=$token
 MARKETPLACE_ADDRESS=$market
 PORT=4000
-MONGO_URI=mongodb+srv://kasshan:Kasshan%402006@cluster0.vpcmj3u.mongodb.net/carbocred
+MONGO_URI=$mongoUri
 
 # Auth
-JWT_SECRET=b7baba3fef4261637786ddd744f082c02123ff4dc82be14d9b58664200871a131867cc8251a7cd27e42ec029f0a2a5d9
-ADMIN_SEED_KEY=c35d8658f5eba3c1a5dab38b9dc70b0ab6b72e03c74c2b61
+JWT_SECRET=$jwtSecret
+ADMIN_SEED_KEY=$adminSeedKey
 "@
-Set-Content -Path "$scriptDir\backend\.env" -Value $backendEnv
+Set-Content -Path $backendEnvPath -Value $backendEnv
 
 $frontendEnv = @"
 VITE_CARBON_CREDIT_TOKEN_ADDRESS=$token
@@ -109,36 +168,26 @@ VITE_MARKETPLACE_ADDRESS=$market
 VITE_BACKEND_WS_URL=ws://localhost:4000
 VITE_CHAIN_ID=31337
 "@
-Set-Content -Path "$scriptDir\frontend\.env" -Value $frontendEnv
+Set-Content -Path (Join-Path $scriptDir "frontend\.env") -Value $frontendEnv
 
 Write-Host "   backend/.env  updated"
 Write-Host "   frontend/.env updated"
 
-# ?????? Step 6: Start Backend ???????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
+# ── Step 5: Start Backend & seed test credits ────────────────────────────────
 Write-Host "[5/6] Starting Backend server..." -ForegroundColor Yellow
+Start-Process powershell -WorkingDirectory (Join-Path $scriptDir "backend") -ArgumentList "-NoExit", "-Command", "node index.js" -WindowStyle Normal
 
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$scriptDir\backend'; node index.js" -WindowStyle Normal
-
-# Wait until port 4000 is ready
 Write-Host "   Waiting for backend API to be ready..."
-$backendReady = $false
-for ($i = 0; $i -lt 20; $i++) {
-    Start-Sleep -Seconds 1
-    $check = Get-NetTCPConnection -LocalPort 4000 -State Listen -ErrorAction SilentlyContinue
-    if ($check) {
-        $backendReady = $true
-        Write-Host "   Backend is up on :4000 (took ~$($i+1)s)" -ForegroundColor Green
-        break
-    }
-}
-if (-not $backendReady) {
-    Write-Host "   Warning: Backend not responding yet ??? continuing anyway." -ForegroundColor DarkYellow
+$backendElapsed = Wait-ForPort -Port 4000 -TimeoutSeconds 20
+if ($backendElapsed) {
+    Write-Host "   Backend is up on :4000 (took ~${backendElapsed}s)" -ForegroundColor Green
+} else {
+    Write-Host "   Warning: Backend not responding yet - continuing anyway." -ForegroundColor DarkYellow
 }
 
-# Award test credits to Hardhat Account #0
 Write-Host "   Awarding 1000 test credits to Account #0..." -ForegroundColor Cyan
 try {
-    Invoke-WebRequest -Uri http://localhost:4000/award `
+    Invoke-WebRequest -Uri "http://localhost:4000/award" `
         -Method POST `
         -ContentType "application/json" `
         -Body '{"entity":"0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266","amount":1000,"reason":"Test credits"}' `
@@ -148,13 +197,11 @@ try {
     Write-Host "   Warning: Could not award credits now. Use the API later." -ForegroundColor DarkYellow
 }
 
-# ?????? Step 7: Start Frontend ????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
+# ── Step 6: Start Frontend ───────────────────────────────────────────────────
 Write-Host "[6/6] Starting Frontend..." -ForegroundColor Yellow
+Start-Process powershell -WorkingDirectory (Join-Path $scriptDir "frontend") -ArgumentList "-NoExit", "-Command", "npm run dev" -WindowStyle Normal
 
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$scriptDir\frontend'; npm run dev" -WindowStyle Normal
-Start-Sleep -Seconds 3
-
-# ?????? Done ??????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
+# ── Done ─────────────────────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Green
 Write-Host "   CarboCred is running!" -ForegroundColor Green
@@ -170,4 +217,3 @@ Write-Host ""
 Write-Host "   IMPORTANT: Always use THIS script to start the app." -ForegroundColor Yellow
 Write-Host "   IMPORTANT: Reset MetaMask account after each restart." -ForegroundColor Yellow
 Write-Host ""
-

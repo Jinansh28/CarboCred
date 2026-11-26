@@ -6,7 +6,7 @@
 
 ## Milestone 0: Emergency Security & Repository Hygiene (`P0`)
 
-- [ ] **M0.1 — Rotate Leaked Credentials & Clean `start.ps1` / Git Junk** *(Refs: C-02, P0-1)*
+- [x] **M0.1 — Rotate Leaked Credentials & Clean `start.ps1` / Git Junk** *(Refs: C-02, P0-1)*
   - **Steps:**
     1. Rotate MongoDB Atlas DB user password, `JWT_SECRET`, and `ADMIN_SEED_KEY` externally; update local `backend/.env` only.
     2. Edit `start.ps1` (L92–104): remove hardcoded `MONGO_URI`, `JWT_SECRET`, and `ADMIN_SEED_KEY`; read from existing `backend/.env` or fall back to `mongodb://127.0.0.1:27017/carbocred` + random per-run local `JWT_SECRET`.
