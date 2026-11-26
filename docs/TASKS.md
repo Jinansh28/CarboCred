@@ -22,7 +22,7 @@
   - **Acceptance Criteria:** `POST /award`, `/debt`, and `/clear-debt` return `404`; local seed script succeeds against Hardhat node.
   - **Verification:** Curl or backend integration test confirms `404` on legacy routes; `npx hardhat run scripts/seedLocal.js --network localhost` succeeds.
 
-- [ ] **M0.3 — Fix `carbocred: "file:.."` Infinite Symlink Loop & Remove Dead Files/Deps** *(Refs: B-01, P1-1)*
+- [x] **M0.3 — Fix `carbocred: "file:.."` Infinite Symlink Loop & Remove Dead Files/Deps** *(Refs: B-01, P1-1)*
   - **Steps:**
     1. Remove `"carbocred": "file:.."` from `backend/package.json` (L12) and `frontend/package.json` (L15).
     2. Uninstall unused `@yudiel/react-qr-scanner` from `frontend/package.json` (`npm uninstall @yudiel/react-qr-scanner` inside `frontend/`).
