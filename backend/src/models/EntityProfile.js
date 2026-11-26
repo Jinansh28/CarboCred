@@ -4,7 +4,7 @@
  * Mongoose schema for mapping hashed account IDs to business names.
  */
 
-const mongoose = require('mongoose');
+import mongoose from 'mongoose';
 
 const EntityProfileSchema = new mongoose.Schema({
     accountId: {
@@ -25,4 +25,4 @@ const EntityProfileSchema = new mongoose.Schema({
     timestamps: true // Adds createdAt and updatedAt automatically
 });
 
-module.exports = mongoose.model('EntityProfile', EntityProfileSchema);
+export default mongoose.model('EntityProfile', EntityProfileSchema);

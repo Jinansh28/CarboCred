@@ -5,8 +5,6 @@
  * Handles ERC-1155 standard events and custom CarbonCreditToken events.
  */
 
-import { formatUnits } from 'viem';
-
 export const TX_TYPES = {
     RECEIVED: 'RECEIVED',
     SENT: 'SENT',

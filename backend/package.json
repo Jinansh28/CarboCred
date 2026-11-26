@@ -1,14 +1,17 @@
 {
     "name": "carbocred-backend",
     "version": "1.0.0",
+    "type": "module",
     "description": "CarboCred backend — event listener + WebSocket relay + backend signer",
     "main": "index.js",
     "scripts": {
         "start": "node index.js",
-        "dev": "nodemon index.js"
+        "dev": "nodemon index.js",
+        "test": "node --test"
     },
     "dependencies": {
         "bcryptjs": "^3.0.3",
+        "carbocred": "file:..",
         "dotenv": "^16.4.5",
         "ethers": "^6.13.4",
         "express": "^4.19.2",

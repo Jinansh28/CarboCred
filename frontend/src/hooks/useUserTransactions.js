@@ -131,7 +131,7 @@ export function useUserTransactions() {
                     try {
                         const block = await publicClient.getBlock({ blockNumber: bn });
                         blockCache.set(bn, Number(block.timestamp) * 1000); // ms
-                    } catch (e) {
+                    } catch {
                         blockCache.set(bn, Date.now()); // fallback
                     }
                 })

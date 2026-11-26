@@ -5,6 +5,7 @@
  * contextual imagery, and a CTA section at the bottom.
  */
 
+// eslint-disable-next-line no-unused-vars
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAccount } from 'wagmi'
 import { CarbonImpactDashboard } from '../components/CarbonImpactDashboard'

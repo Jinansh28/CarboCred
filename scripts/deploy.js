@@ -1,5 +1,7 @@
-const { ethers } = require("hardhat");
-require("dotenv").config();
+import pkg from "hardhat";
+import "dotenv/config";
+
+const { ethers } = pkg;
 
 /**
  * Deployment script for the CarboCred ecosystem (ERC-1155 edition).

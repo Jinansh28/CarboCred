@@ -3,8 +3,8 @@
  * Stores registered users. Role determines access level.
  */
 
-const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
+import mongoose from 'mongoose';
+import bcrypt from 'bcryptjs';
 
 const UserSchema = new mongoose.Schema(
     {
@@ -41,4 +41,4 @@ UserSchema.methods.comparePassword = async function (plain) {
     return bcrypt.compare(plain, this.password);
 };
 
-module.exports = mongoose.model('User', UserSchema);
+export default mongoose.model('User', UserSchema);

@@ -11,7 +11,7 @@
  *   getGlobalStats(client, tokenContract)
  */
 
-import { parseAbiItem, formatUnits } from 'viem'
+import { parseAbiItem } from 'viem'
 
 // ── Event signatures ────────────────────────────────────────────────────────
 const CREDITS_AWARDED_ABI = parseAbiItem('event CreditsAwarded(address indexed entity, uint256 amount, string reason)')

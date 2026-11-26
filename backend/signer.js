@@ -5,8 +5,8 @@
  * It provides functions to award credits, record debt, and clear debt.
  */
 
-const { ethers } = require("ethers");
-require("dotenv").config();
+import { ethers } from "ethers";
+import "dotenv/config";
 
 // Contract ABI (just the functions we need for signing)
 const CARBON_CREDIT_TOKEN_ABI = [
@@ -15,36 +15,65 @@ const CARBON_CREDIT_TOKEN_ABI = [
     "function clearDebt(address entity, uint256 amount)",
 ];
 
-const provider = new ethers.JsonRpcProvider(process.env.RPC_URL.replace("ws://", "http://").replace("wss://", "https://"));
-const wallet = new ethers.Wallet(process.env.BACKEND_PRIVATE_KEY, provider);
+export let provider = null;
+let wallet = null;
+let creditToken = null;
 
-const creditToken = new ethers.Contract(
-    process.env.CARBON_CREDIT_TOKEN_ADDRESS,
-    CARBON_CREDIT_TOKEN_ABI,
-    wallet
-);
+function getRpcHttpUrl() {
+    const rpcUrl = process.env.RPC_URL;
+    if (!rpcUrl) {
+        throw new Error("RPC_URL environment variable is required");
+    }
+    return rpcUrl.replace("ws://", "http://").replace("wss://", "https://");
+}
 
-async function awardCredits(entity, amount, reason) {
+export function getProvider() {
+    if (!provider) {
+        provider = new ethers.JsonRpcProvider(getRpcHttpUrl());
+    }
+    return provider;
+}
+
+export function initSigner() {
+    const rpcProvider = getProvider();
+    if (!wallet || !creditToken) {
+        const privateKey = process.env.BACKEND_PRIVATE_KEY;
+        const tokenAddress = process.env.CARBON_CREDIT_TOKEN_ADDRESS;
+        if (!privateKey) {
+            throw new Error("BACKEND_PRIVATE_KEY environment variable is required");
+        }
+        if (!tokenAddress) {
+            throw new Error("CARBON_CREDIT_TOKEN_ADDRESS environment variable is required");
+        }
+        wallet = new ethers.Wallet(privateKey, rpcProvider);
+        creditToken = new ethers.Contract(tokenAddress, CARBON_CREDIT_TOKEN_ABI, wallet);
+    }
+    return { provider: rpcProvider, wallet, creditToken };
+}
+
+export function resetSigner() {
+    provider = null;
+    wallet = null;
+    creditToken = null;
+}
+
+export async function awardCredits(entity, amount, reason) {
+    const { creditToken: token } = initSigner();
     console.log(`[Signer] Awarding ${amount} credits to ${entity}...`);
-    const tx = await creditToken.awardCredits(entity, amount, reason);
+    const tx = await token.awardCredits(entity, amount, reason);
     return await tx.wait();
 }
 
-async function recordDebt(entity, amount, reason) {
+export async function recordDebt(entity, amount, reason) {
+    const { creditToken: token } = initSigner();
     console.log(`[Signer] Recording ${amount} debt for ${entity}...`);
-    const tx = await creditToken.recordDebt(entity, amount, reason);
+    const tx = await token.recordDebt(entity, amount, reason);
     return await tx.wait();
 }
 
-async function clearDebt(entity, amount) {
+export async function clearDebt(entity, amount) {
+    const { creditToken: token } = initSigner();
     console.log(`[Signer] Clearing ${amount} debt for ${entity}...`);
-    const tx = await creditToken.clearDebt(entity, amount);
+    const tx = await token.clearDebt(entity, amount);
     return await tx.wait();
 }
-
-module.exports = {
-    awardCredits,
-    recordDebt,
-    clearDebt,
-    provider,
-};

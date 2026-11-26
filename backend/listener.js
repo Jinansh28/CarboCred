@@ -4,8 +4,8 @@
  * Attaches event listeners to the deployed contracts and relays them via callback.
  */
 
-const { ethers } = require("ethers");
-require("dotenv").config();
+import { ethers } from "ethers";
+import "dotenv/config";
 
 const CARBON_CREDIT_TOKEN_ABI = [
     "event CreditsAwarded(address indexed entity, uint256 amount, string reason)",
@@ -24,8 +24,15 @@ let provider;
 let tokenContract;
 let marketplaceContract;
 
-function startListeners(onEvent) {
+export function startListeners(onEvent) {
     console.log("[Listener] Attaching event listeners...");
+
+    if (!process.env.RPC_URL) {
+        throw new Error("RPC_URL environment variable is required");
+    }
+    if (!process.env.CARBON_CREDIT_TOKEN_ADDRESS || !process.env.MARKETPLACE_ADDRESS) {
+        throw new Error("Contract addresses are required to start listeners");
+    }
 
     provider = new ethers.WebSocketProvider(process.env.RPC_URL);
 
@@ -142,11 +149,9 @@ function startListeners(onEvent) {
     console.log("[Listener] All listeners active ✓");
 }
 
-async function stopListeners() {
+export async function stopListeners() {
     console.log("[Listener] Removing listeners...");
     if (tokenContract) tokenContract.removeAllListeners();
     if (marketplaceContract) marketplaceContract.removeAllListeners();
     if (provider) await provider.destroy();
 }
-
-module.exports = { startListeners, stopListeners };

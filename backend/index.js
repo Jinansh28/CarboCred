@@ -26,25 +26,45 @@
  * All reads go directly to the blockchain.
  */
 
-require("dotenv").config();
-const express = require("express");
-const http = require("http");
-const { WebSocketServer } = require("ws");
-const { startListeners, stopListeners } = require("./listener");
-const { awardCredits, recordDebt, clearDebt, getNetCredits } = require("./signer");
-const { ethers } = require("ethers");
-const mongoose = require("mongoose");
+import dotenv from "dotenv";
+import express from "express";
+import fs from "fs";
+import http from "http";
+import path from "path";
+import { fileURLToPath, pathToFileURL } from "url";
+import { WebSocketServer } from "ws";
+import { ethers } from "ethers";
+import mongoose from "mongoose";
+import { startListeners, stopListeners } from "./listener.js";
+import { awardCredits, recordDebt, clearDebt, getProvider } from "./signer.js";
+import authRoutes from "./src/routes/auth.routes.js";
+import entityProfileRoutes from "./src/routes/entityProfile.routes.js";
+import creditRequestRoutes from "./src/routes/creditRequest.routes.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(__dirname, ".env") });
 
 const PORT = process.env.PORT || 4000;
 
 // ── Express HTTP server ───────────────────────────────────────────────────
-const app = express();
-const server = http.createServer(app);
+export const app = express();
+export const server = http.createServer(app);
 
 // ── Database ──────────────────────────────────────────────────────────────
-mongoose.connect(process.env.MONGO_URI)
-    .then(() => console.log("[DB] Connected to MongoDB"))
-    .catch(err => console.error("[DB] Connection error:", err.message));
+export async function connectDatabase(uri = process.env.MONGO_URI) {
+    if (!uri) {
+        console.warn("[DB] MONGO_URI not set; skipping MongoDB connection");
+        return null;
+    }
+    try {
+        const conn = await mongoose.connect(uri);
+        console.log("[DB] Connected to MongoDB");
+        return conn;
+    } catch (err) {
+        console.error("[DB] Connection error:", err.message);
+        return null;
+    }
+}
 
 app.use(express.json());
 
@@ -58,7 +78,7 @@ app.use((req, res, next) => {
 });
 
 // ── WebSocket server ──────────────────────────────────────────────────────
-const wss = new WebSocketServer({ server });
+export const wss = new WebSocketServer({ server });
 const clients = new Set();
 
 wss.on("connection", (ws, req) => {
@@ -77,7 +97,7 @@ wss.on("connection", (ws, req) => {
  * Broadcast a parsed blockchain event to all connected WebSocket clients.
  * @param {object} eventData  Structured event object from listener.js.
  */
-function broadcast(eventData) {
+export function broadcast(eventData) {
     const payload = JSON.stringify(eventData);
     for (const client of clients) {
         if (client.readyState === 1 /* OPEN */) {
@@ -101,13 +121,12 @@ app.get("/position/:address", async (req, res) => {
             return res.status(400).json({ error: "Invalid Ethereum address" });
         }
 
-        const { ethers: eth } = require("ethers");
         const CREDIT_TOKEN_ABI = [
             "function getPosition(address) view returns (uint256 credits, uint256 debt)",
             "function netCredits(address) view returns (int256)",
         ];
-        const { provider } = require("./signer");
-        const contract = new eth.Contract(
+        const provider = getProvider();
+        const contract = new ethers.Contract(
             process.env.CARBON_CREDIT_TOKEN_ADDRESS,
             CREDIT_TOKEN_ABI,
             provider
@@ -200,28 +219,45 @@ app.post("/clear-debt", async (req, res) => {
 });
 
 // ── Auth Routes ───────────────────────────────────────────────────────────
-app.use("/auth", require("./src/routes/auth.routes"));
+app.use("/auth", authRoutes);
 
 // ── Identity Routes ───────────────────────────────────────────────────────
-app.use("/entity", require("./src/routes/entityProfile.routes"));
+app.use("/entity", entityProfileRoutes);
 
 // ── Credit Request Routes (Admin Validation Workflow) ─────────────────────
-app.use("/api/requests", require("./src/routes/creditRequest.routes"));
+app.use("/api/requests", creditRequestRoutes);
 
 // ── Health check ──────────────────────────────────────────────────────────
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
 
 // ── Start ─────────────────────────────────────────────────────────────────
-server.listen(PORT, () => {
-    console.log(`\n🌿 CarboCred backend running`);
-    console.log(`   HTTP  → http://localhost:${PORT}`);
-    console.log(`   WS    → ws://localhost:${PORT}\n`);
-    startListeners(broadcast);
-});
+export function startServer(port = PORT) {
+    server.listen(port, () => {
+        console.log(`\n🌿 CarboCred backend running`);
+        console.log(`   HTTP  → http://localhost:${port}`);
+        console.log(`   WS    → ws://localhost:${port}\n`);
+        startListeners(broadcast);
+    });
 
-// ── Graceful shutdown ─────────────────────────────────────────────────────
-process.on("SIGTERM", async () => {
-    console.log("[Server] Shutting down...");
-    await stopListeners();
-    server.close();
-});
+    process.on("SIGTERM", async () => {
+        console.log("[Server] Shutting down...");
+        await stopListeners();
+        server.close();
+    });
+
+    return server;
+}
+
+const isMain = (() => {
+    if (!process.argv[1]) return false;
+    try {
+        return import.meta.url === pathToFileURL(fs.realpathSync(process.argv[1])).href;
+    } catch {
+        return import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
+    }
+})();
+
+if (isMain) {
+    connectDatabase();
+    startServer();
+}

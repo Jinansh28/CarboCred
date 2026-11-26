@@ -8,10 +8,10 @@
  * GET  /auth/me        — returns current user (requires token)
  */
 
-const express = require('express');
-const jwt = require('jsonwebtoken');
-const User = require('../models/User');
-const requireAuth = require('../middleware/requireAuth');
+import express from 'express';
+import jwt from 'jsonwebtoken';
+import User from '../models/User.js';
+import requireAuth from '../middleware/requireAuth.js';
 
 const router = express.Router();
 
@@ -105,4 +105,4 @@ router.get('/me', requireAuth, (req, res) => {
     res.json({ success: true, user: { id: _id, email, role } });
 });
 
-module.exports = router;
+export default router;

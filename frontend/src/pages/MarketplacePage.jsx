@@ -7,6 +7,7 @@
  */
 
 import { useState } from 'react'
+// eslint-disable-next-line no-unused-vars
 import { motion, AnimatePresence } from 'framer-motion'
 import { formatEther } from 'viem'
 import { ListingStatus } from '../lib/contracts'

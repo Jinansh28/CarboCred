@@ -4,13 +4,13 @@
  * Controller for business identity profile operations.
  */
 
-const EntityProfile = require('../models/EntityProfile');
+import EntityProfile from '../models/EntityProfile.js';
 
 /**
  * Get profile by accountId.
  * GET /entity/profile/:accountId
  */
-exports.getProfile = async (req, res) => {
+export const getProfile = async (req, res) => {
     try {
         const { accountId } = req.params;
         if (!accountId) {
@@ -34,7 +34,7 @@ exports.getProfile = async (req, res) => {
  * Upsert profile.
  * POST /entity/profile
  */
-exports.upsertProfile = async (req, res) => {
+export const upsertProfile = async (req, res) => {
     try {
         const { accountId, businessName } = req.body;
 

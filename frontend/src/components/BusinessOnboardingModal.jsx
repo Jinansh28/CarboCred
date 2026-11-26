@@ -7,7 +7,7 @@
 
 import React, { useState } from 'react';
 
-export function BusinessOnboardingModal({ isOpen, onSubmit, loading, error, accountId }) {
+export function BusinessOnboardingModal({ isOpen, onSubmit, loading, error }) {
   const [businessName, setBusinessName] = useState('');
 
   if (!isOpen) return null;

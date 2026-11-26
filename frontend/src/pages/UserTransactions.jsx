@@ -7,6 +7,7 @@
  */
 
 import React from 'react';
+// eslint-disable-next-line no-unused-vars
 import { motion } from 'framer-motion';
 import { useAccount } from 'wagmi';
 import { useUserTransactions } from '../hooks/useUserTransactions';
@@ -148,7 +149,7 @@ export default function UserTransactions() {
     );
 }
 
-function SummaryCard({ title, value, icon, color, bg, loading, index }) {
+function SummaryCard({ title, value, icon, color, bg, loading }) {
     return (
         <motion.div
             variants={itemVariants}

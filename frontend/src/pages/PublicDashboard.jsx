@@ -6,6 +6,8 @@
  * Accessible at: http://localhost:3000/public-dashboard.html (dev)
  */
 
+import { useState, useEffect } from 'react'
+// eslint-disable-next-line no-unused-vars
 import { motion } from 'framer-motion'
 import { usePublicCarbonData } from '../hooks/usePublicCarbonData'
 import { GlobalStats } from '../components/GlobalStats'
@@ -17,9 +19,16 @@ const REFRESH_INTERVAL_S = 30
 export default function PublicDashboard() {
     const { firms, globalStats, loading, error, lastRefresh, refresh } =
         usePublicCarbonData()
+    const [now, setNow] = useState(() => Date.now())
+
+    useEffect(() => {
+        if (!lastRefresh) return
+        const id = setInterval(() => setNow(Date.now()), 1000)
+        return () => clearInterval(id)
+    }, [lastRefresh])
 
     const nextRefreshIn = lastRefresh
-        ? Math.max(0, REFRESH_INTERVAL_S - Math.floor((Date.now() - lastRefresh.getTime()) / 1000))
+        ? Math.max(0, REFRESH_INTERVAL_S - Math.floor((now - lastRefresh.getTime()) / 1000))
         : null
 
     return (

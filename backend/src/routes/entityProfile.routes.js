@@ -4,14 +4,15 @@
  * Routes for business identity profiles.
  */
 
-const express = require('express');
+import express from 'express';
+import { getProfile, upsertProfile } from '../controllers/entityProfile.controller.js';
+
 const router = express.Router();
-const controller = require('../controllers/entityProfile.controller');
 
 // GET /entity/profile/:accountId
-router.get('/profile/:accountId', controller.getProfile);
+router.get('/profile/:accountId', getProfile);
 
 // POST /entity/profile
-router.post('/profile', controller.upsertProfile);
+router.post('/profile', upsertProfile);
 
-module.exports = router;
+export default router;

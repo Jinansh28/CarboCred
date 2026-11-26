@@ -1,5 +1,7 @@
-const { expect } = require("chai");
-const { ethers } = require("hardhat");
+import { expect } from "chai";
+import pkg from "hardhat";
+
+const { ethers } = pkg;
 
 /**
  * CarboCred ERC-1155 Test Suite

@@ -17,11 +17,18 @@ export function AuthProvider({ children }) {
     const [user, setUser] = useState(null)
     const [loading, setLoading] = useState(!!localStorage.getItem(STORAGE_KEY))
 
+    const _clear = useCallback(() => {
+        localStorage.removeItem(STORAGE_KEY)
+        setToken(null)
+        setUser(null)
+    }, [])
+
     // On mount, validate stored token and hydrate user
     useEffect(() => {
-        if (!token) { setLoading(false); return }
+        const storedToken = localStorage.getItem(STORAGE_KEY)
+        if (!storedToken) return
         fetch(`${BACKEND_URL}/auth/me`, {
-            headers: { Authorization: `Bearer ${token}` },
+            headers: { Authorization: `Bearer ${storedToken}` },
         })
             .then(r => r.json())
             .then(json => {
@@ -30,18 +37,12 @@ export function AuthProvider({ children }) {
             })
             .catch(() => _clear())
             .finally(() => setLoading(false))
-    }, []) // run once on mount
+    }, [_clear])
 
     function _save(tk, usr) {
         localStorage.setItem(STORAGE_KEY, tk)
         setToken(tk)
         setUser(usr)
-    }
-
-    function _clear() {
-        localStorage.removeItem(STORAGE_KEY)
-        setToken(null)
-        setUser(null)
     }
 
     async function login(email, password) {
@@ -77,6 +78,7 @@ export function AuthProvider({ children }) {
     )
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
     const ctx = useContext(AuthContext)
     if (!ctx) throw new Error('useAuth must be used inside <AuthProvider>')

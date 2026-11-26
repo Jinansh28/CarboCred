@@ -121,9 +121,11 @@ export function useTxVerification(txHash = null) {
 
     // Auto-verify if hook is instantiated with a hash
     useEffect(() => {
-        if (txHash) {
+        if (!txHash) return;
+        const timer = setTimeout(() => {
             verifyTransaction(txHash);
-        }
+        }, 0);
+        return () => clearTimeout(timer);
     }, [txHash, verifyTransaction]);
 
     return {

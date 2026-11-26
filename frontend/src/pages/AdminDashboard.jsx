@@ -10,6 +10,7 @@
  */
 
 import { useState, useCallback } from 'react'
+// eslint-disable-next-line no-unused-vars
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAccount } from 'wagmi'
 import { usePublicCarbonData } from '../hooks/usePublicCarbonData'

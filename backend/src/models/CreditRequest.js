@@ -6,7 +6,7 @@
  * an admin explicitly approves them via the dashboard.
  */
 
-const mongoose = require('mongoose');
+import mongoose from 'mongoose';
 
 const CreditRequestSchema = new mongoose.Schema(
     {
@@ -48,4 +48,4 @@ const CreditRequestSchema = new mongoose.Schema(
 // Index for fast pending queries
 CreditRequestSchema.index({ status: 1, createdAt: -1 });
 
-module.exports = mongoose.model('CreditRequest', CreditRequestSchema);
+export default mongoose.model('CreditRequest', CreditRequestSchema);

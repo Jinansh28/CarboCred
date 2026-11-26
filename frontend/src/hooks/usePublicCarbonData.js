@@ -6,7 +6,7 @@
  * Auto-refreshes every 30 seconds.
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { createPublicClient, http } from 'viem'
 import { hardhat } from 'viem/chains'
 import {
@@ -94,7 +94,7 @@ export function usePublicCarbonData() {
                             const data = await res.json()
                             if (data.exists) profileMap.set(addr.toLowerCase(), data.businessName)
                         }
-                    } catch (e) {
+                    } catch {
                         // ignore errors to avoid breaking the dashboard if backend is down
                     }
                 })

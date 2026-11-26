@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+// eslint-disable-next-line no-unused-vars
 import { motion, AnimatePresence } from 'framer-motion';
 import { QRScanner } from '../components/QRScanner';
 import { useTxVerification } from '../hooks/useTxVerification';
@@ -7,25 +8,27 @@ import { SpotlightCard } from '../components/SpotlightCard';
 const BACKEND = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000';
 
 export default function VerifyTransaction({ initialHash = '', onReturnHome }) {
-    const [mode, setMode] = useState('SCAN'); // 'SCAN' or 'MANUAL'
+    const [mode, setMode] = useState(initialHash ? 'MANUAL' : 'SCAN'); // 'SCAN' or 'MANUAL'
     const [inputHash, setInputHash] = useState(initialHash);
     const [activeHash, setActiveHash] = useState(initialHash);
-    const [firmName, setFirmName] = useState(null);
+    const [firmProfile, setFirmProfile] = useState(null);
 
     // Core Verification Hook Pipeline
     const { loading, exists, confirmed, receipt, error, timestamp, verifyTransaction } = useTxVerification();
 
     useEffect(() => {
-        if (activeHash) {
+        if (!activeHash) return;
+        const timer = setTimeout(() => {
             verifyTransaction(activeHash);
-            setMode('MANUAL');
-        }
+        }, 0);
+        return () => clearTimeout(timer);
     }, [activeHash, verifyTransaction]);
 
     // When receipt is confirmed, look up the firm name from the backend
     useEffect(() => {
-        if (!receipt?.from) { setFirmName(null); return; }
+        if (!receipt?.from) return;
 
+        let cancelled = false;
         const hashAddress = async (address) => {
             const encoded = new TextEncoder().encode(address.toLowerCase());
             const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
@@ -37,9 +40,19 @@ export default function VerifyTransaction({ initialHash = '', onReturnHome }) {
         hashAddress(receipt.from)
             .then(accountId => fetch(`${BACKEND}/entity/profile/${accountId}`))
             .then(r => r.ok ? r.json() : null)
-            .then(data => setFirmName(data?.businessName || null))
-            .catch(() => setFirmName(null));
+            .then(data => {
+                if (!cancelled) {
+                    setFirmProfile({ from: receipt.from, name: data?.businessName || null });
+                }
+            })
+            .catch(() => {
+                if (!cancelled) setFirmProfile(null);
+            });
+
+        return () => { cancelled = true; };
     }, [receipt]);
+
+    const firmName = receipt?.from && firmProfile?.from === receipt.from ? firmProfile.name : null;
 
     const handleScanSuccess = (decodedHash) => {
         setInputHash(decodedHash);

@@ -8,13 +8,14 @@
  *   POST   /api/requests/:id/reject  — admin only
  */
 
-const express = require('express');
+import express from 'express';
+import { ethers } from 'ethers';
+import CreditRequest from '../models/CreditRequest.js';
+import { awardCredits, recordDebt } from '../../signer.js';
+import requireAuth from '../middleware/requireAuth.js';
+import requireAdmin from '../middleware/requireAdmin.js';
+
 const router = express.Router();
-const CreditRequest = require('../models/CreditRequest');
-const { awardCredits, recordDebt } = require('../../signer');
-const { ethers } = require('ethers');
-const requireAuth = require('../middleware/requireAuth');
-const requireAdmin = require('../middleware/requireAdmin');
 
 // ── POST /api/requests ────────────────────────────────────────────────────
 // Authenticated users submit a PENDING request.
@@ -121,4 +122,4 @@ router.post('/:id/reject', requireAuth, requireAdmin, async (req, res) => {
     }
 });
 
-module.exports = router;
+export default router;

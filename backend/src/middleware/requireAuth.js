@@ -3,10 +3,10 @@
  * Verifies JWT from Authorization header and attaches req.user.
  */
 
-const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+import jwt from 'jsonwebtoken';
+import User from '../models/User.js';
 
-module.exports = async function requireAuth(req, res, next) {
+export default async function requireAuth(req, res, next) {
     const header = req.headers.authorization;
     if (!header || !header.startsWith('Bearer ')) {
         return res.status(401).json({ success: false, error: 'Unauthorized — no token provided.' });

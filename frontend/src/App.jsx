@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useAccount, useConnect, useDisconnect, useChainId, useSwitchChain, useConnectors } from 'wagmi'
 import { hardhat } from 'wagmi/chains'
-import { formatEther } from 'viem'
 import { useEntityPosition } from './hooks/useEntityPosition'
 import { useActiveListings, useListCredits, usePurchaseListing, useCancelListing } from './hooks/useMarketplace'
 import { useLiveFeed } from './hooks/useLiveFeed'
@@ -24,10 +23,6 @@ import ThemeToggle from './components/ThemeToggle'
 import './App.css'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-
-function shortenAddr(addr) {
-  return `${addr.slice(0, 6)}…${addr.slice(-4)}`
-}
 
 function NetBadge({ net }) {
   const isPositive = net >= 0n
