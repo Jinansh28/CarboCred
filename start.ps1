@@ -185,16 +185,18 @@ if ($backendElapsed) {
     Write-Host "   Warning: Backend not responding yet - continuing anyway." -ForegroundColor DarkYellow
 }
 
-Write-Host "   Awarding 1000 test credits to Account #0..." -ForegroundColor Cyan
+Write-Host "   Seeding 1000 test credits to Account #0..." -ForegroundColor Cyan
+Push-Location $scriptDir
 try {
-    Invoke-WebRequest -Uri "http://localhost:4000/award" `
-        -Method POST `
-        -ContentType "application/json" `
-        -Body '{"entity":"0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266","amount":1000,"reason":"Test credits"}' `
-        -UseBasicParsing | Out-Null
+    npx hardhat run scripts/seedLocal.js --network localhost
+    if ($LASTEXITCODE -ne 0) {
+        throw "seedLocal.js exited with code $LASTEXITCODE"
+    }
     Write-Host "   1000 credits awarded to Account #0!" -ForegroundColor Green
 } catch {
-    Write-Host "   Warning: Could not award credits now. Use the API later." -ForegroundColor DarkYellow
+    Write-Host "   Warning: Could not seed test credits ($($_.Exception.Message))." -ForegroundColor DarkYellow
+} finally {
+    Pop-Location
 }
 
 # ── Step 6: Start Frontend ───────────────────────────────────────────────────

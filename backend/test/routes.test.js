@@ -69,27 +69,27 @@ describe("Core Express endpoints and WebSocket", () => {
         assert.equal(body.error, "Invalid Ethereum address");
     });
 
-    it("POST /award, /debt, and /clear-debt validate required fields and signature", async () => {
-        const awardMissing = await fetch(`${baseUrl}/award`, {
+    it("POST /award, /debt, and /clear-debt return 404 (removed legacy endpoints)", async () => {
+        const awardRes = await fetch(`${baseUrl}/award`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ entity: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" }),
+            body: JSON.stringify({ entity: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266", amount: 1000, reason: "Test credits" }),
         });
-        assert.equal(awardMissing.status, 400);
+        assert.equal(awardRes.status, 404);
 
-        const debtMissing = await fetch(`${baseUrl}/debt`, {
+        const debtRes = await fetch(`${baseUrl}/debt`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({}),
+            body: JSON.stringify({ entity: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266", amount: 100, reason: "Test debt" }),
         });
-        assert.equal(debtMissing.status, 400);
+        assert.equal(debtRes.status, 404);
 
-        const clearMissing = await fetch(`${baseUrl}/clear-debt`, {
+        const clearRes = await fetch(`${baseUrl}/clear-debt`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ entity: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" }),
+            body: JSON.stringify({ entity: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266", amount: 100 }),
         });
-        assert.equal(clearMissing.status, 400);
+        assert.equal(clearRes.status, 404);
     });
 
     it("WebSocket clients receive welcome message and broadcast events", async () => {

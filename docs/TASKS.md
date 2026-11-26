@@ -14,7 +14,7 @@
   - **Acceptance Criteria:** Zero credentials in `start.ps1` or any Git-tracked file.
   - **Verification:** `git diff` + `git status` + grep for `mongodb+srv://` across tracked files returns 0 hits.
 
-- [ ] **M0.2 — Remove Unauthenticated `/award`, `/debt`, `/clear-debt` Endpoints** *(Refs: C-01, P0-2)*
+- [x] **M0.2 — Remove Unauthenticated `/award`, `/debt`, `/clear-debt` Endpoints** *(Refs: C-01, P0-2)*
   - **Steps:**
     1. Delete `app.post("/award", ...)`, `app.post("/debt", ...)`, and `app.post("/clear-debt", ...)` from `backend/index.js` (L131–200), plus unused `getNetCredits` destructuring on L34.
     2. Create `scripts/seedLocal.js` to mint initial local dev credits to Hardhat Account #0 via Hardhat signer directly.
