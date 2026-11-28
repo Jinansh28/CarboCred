@@ -5,7 +5,17 @@ import { hashAccountId } from "../src/utils/hashAccountId.js";
 import requireAuth from "../src/middleware/requireAuth.js";
 import requireAdmin from "../src/middleware/requireAdmin.js";
 import User from "../src/models/User.js";
-import { getProvider, initSigner, resetSigner } from "../signer.js";
+import CreditRequest from "../src/models/CreditRequest.js";
+import {
+    awardCredits,
+    clearDebt,
+    enqueueTx,
+    getProvider,
+    initSigner,
+    recordDebt,
+    resetSigner,
+    setSignerForTest,
+} from "../signer.js";
 import { startListeners, stopListeners } from "../listener.js";
 
 function createMockRes() {
@@ -185,5 +195,83 @@ describe("signer and listener guards", () => {
         process.env.RPC_URL = "ws://127.0.0.1:8545";
         delete process.env.CARBON_CREDIT_TOKEN_ADDRESS;
         assert.throws(() => startListeners(() => {}), /Contract addresses are required/);
+    });
+
+    it("signer serializes concurrent awardCredits/recordDebt/clearDebt calls sequentially", async () => {
+        let active = 0;
+        let maxActive = 0;
+        const order = [];
+
+        const makeMockTx = (label, delayMs) => async () => {
+            active += 1;
+            maxActive = Math.max(maxActive, active);
+            order.push(`${label}:start`);
+            await new Promise((r) => setTimeout(r, delayMs));
+            order.push(`${label}:end`);
+            active -= 1;
+            return {
+                hash: `0x${label}`,
+                wait: async () => ({ hash: `0x${label}` }),
+            };
+        };
+
+        setSignerForTest({
+            provider: {},
+            wallet: { address: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" },
+            creditToken: {
+                awardCredits: makeMockTx("award", 25),
+                recordDebt: makeMockTx("debt", 15),
+                clearDebt: makeMockTx("clear", 10),
+            },
+        });
+
+        const [r1, r2, r3] = await Promise.all([
+            awardCredits("0x1111111111111111111111111111111111111111", 10n, "solar"),
+            recordDebt("0x1111111111111111111111111111111111111111", 5n, "coal"),
+            clearDebt("0x1111111111111111111111111111111111111111", 5n),
+        ]);
+
+        assert.equal(maxActive, 1);
+        assert.deepEqual(order, [
+            "award:start", "award:end",
+            "debt:start", "debt:end",
+            "clear:start", "clear:end",
+        ]);
+        assert.equal(r1.hash, "0xaward");
+        assert.equal(r2.hash, "0xdebt");
+        assert.equal(r3.hash, "0xclear");
+    });
+
+    it("signer queue does not stall when an earlier queued operation rejects", async () => {
+        const results = [];
+        const first = enqueueTx(async () => {
+            await new Promise((r) => setTimeout(r, 15));
+            throw new Error("rpc failure");
+        });
+        const second = enqueueTx(async () => {
+            results.push("ran-second");
+            return "ok";
+        });
+
+        await assert.rejects(first, /rpc failure/);
+        assert.equal(await second, "ok");
+        assert.deepEqual(results, ["ran-second"]);
+    });
+});
+
+describe("CreditRequest schema definition", () => {
+    it("defines expected status enum, audit fields, and indexes", () => {
+        const statusEnum = CreditRequest.schema.path("status").options.enum;
+        assert.deepEqual(statusEnum, ["PENDING", "PROCESSING", "APPROVED", "REJECTED", "FAILED"]);
+
+        assert.ok(CreditRequest.schema.path("submittedBy"));
+        assert.ok(CreditRequest.schema.path("reviewedBy"));
+        assert.ok(CreditRequest.schema.path("reviewedAt"));
+        assert.ok(CreditRequest.schema.path("rejectionReason"));
+
+        const indexKeys = CreditRequest.schema.indexes().map(([keys]) => keys);
+        assert.ok(indexKeys.some((k) => k.status === 1 && k.createdAt === -1));
+        assert.ok(indexKeys.some((k) => k.entityAddress === 1 && k.createdAt === -1));
+        assert.ok(indexKeys.some((k) => k.submittedBy === 1 && k.createdAt === -1));
     });
 });

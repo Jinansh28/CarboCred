@@ -18,6 +18,17 @@ const CARBON_CREDIT_TOKEN_ABI = [
 export let provider = null;
 let wallet = null;
 let creditToken = null;
+let txQueue = Promise.resolve();
+
+/**
+ * Serialize all EOA-signed transactions through a FIFO async queue
+ * so concurrent approvals never collide on account nonces.
+ */
+export function enqueueTx(task) {
+    const run = txQueue.then(() => task());
+    txQueue = run.catch(() => {});
+    return run;
+}
 
 function getRpcHttpUrl() {
     const rpcUrl = process.env.RPC_URL;
@@ -55,25 +66,42 @@ export function resetSigner() {
     provider = null;
     wallet = null;
     creditToken = null;
+    txQueue = Promise.resolve();
 }
 
-export async function awardCredits(entity, amount, reason) {
-    const { creditToken: token } = initSigner();
-    console.log(`[Signer] Awarding ${amount} credits to ${entity}...`);
-    const tx = await token.awardCredits(entity, amount, reason);
-    return await tx.wait();
+export function setSignerForTest({
+    provider: testProvider,
+    wallet: testWallet,
+    creditToken: testToken,
+} = {}) {
+    provider = testProvider ?? null;
+    wallet = testWallet ?? null;
+    creditToken = testToken ?? null;
 }
 
-export async function recordDebt(entity, amount, reason) {
-    const { creditToken: token } = initSigner();
-    console.log(`[Signer] Recording ${amount} debt for ${entity}...`);
-    const tx = await token.recordDebt(entity, amount, reason);
-    return await tx.wait();
+export function awardCredits(entity, amount, reason) {
+    return enqueueTx(async () => {
+        const { creditToken: token } = initSigner();
+        console.log(`[Signer] Awarding ${amount} credits to ${entity}...`);
+        const tx = await token.awardCredits(entity, amount, reason);
+        return await tx.wait();
+    });
 }
 
-export async function clearDebt(entity, amount) {
-    const { creditToken: token } = initSigner();
-    console.log(`[Signer] Clearing ${amount} debt for ${entity}...`);
-    const tx = await token.clearDebt(entity, amount);
-    return await tx.wait();
+export function recordDebt(entity, amount, reason) {
+    return enqueueTx(async () => {
+        const { creditToken: token } = initSigner();
+        console.log(`[Signer] Recording ${amount} debt for ${entity}...`);
+        const tx = await token.recordDebt(entity, amount, reason);
+        return await tx.wait();
+    });
+}
+
+export function clearDebt(entity, amount) {
+    return enqueueTx(async () => {
+        const { creditToken: token } = initSigner();
+        console.log(`[Signer] Clearing ${amount} debt for ${entity}...`);
+        const tx = await token.clearDebt(entity, amount);
+        return await tx.wait();
+    });
 }

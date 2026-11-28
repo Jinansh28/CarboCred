@@ -34,8 +34,28 @@ const CreditRequestSchema = new mongoose.Schema(
         },
         status: {
             type: String,
-            enum: ['PENDING', 'APPROVED', 'REJECTED'],
+            enum: ['PENDING', 'PROCESSING', 'APPROVED', 'REJECTED', 'FAILED'],
             default: 'PENDING',
+        },
+        submittedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User',
+            default: null,
+        },
+        reviewedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User',
+            default: null,
+        },
+        reviewedAt: {
+            type: Date,
+            default: null,
+        },
+        rejectionReason: {
+            type: String,
+            trim: true,
+            maxlength: 500,
+            default: null,
         },
         txHash: {
             type: String,
@@ -45,7 +65,9 @@ const CreditRequestSchema = new mongoose.Schema(
     { timestamps: true }   // adds createdAt + updatedAt automatically
 );
 
-// Index for fast pending queries
+// Indexes for pending queue, entity history, and user submissions
 CreditRequestSchema.index({ status: 1, createdAt: -1 });
+CreditRequestSchema.index({ entityAddress: 1, createdAt: -1 });
+CreditRequestSchema.index({ submittedBy: 1, createdAt: -1 });
 
 export default mongoose.model('CreditRequest', CreditRequestSchema);

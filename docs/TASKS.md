@@ -51,7 +51,7 @@
 
 ## Milestone 2: Backend Hardening, Atomic Approvals & API Hygiene (`P0`/`P2`)
 
-- [ ] **M2.1 — Atomic `CreditRequest` Approval & Signer Nonce Serialization** *(Refs: C-04, P-02, P0-4)*
+- [x] **M2.1 — Atomic `CreditRequest` Approval & Signer Nonce Serialization** *(Refs: C-04, P-02, P0-4)*
   - **Steps:**
     1. Update `backend/src/models/CreditRequest.js`: add `'PROCESSING'` to `status` enum, add `submittedBy`, `reviewedBy`, `reviewedAt`, `rejectionReason`, and index `{ entityAddress: 1, createdAt: -1 }`.
     2. In `backend/src/routes/creditRequest.routes.js`:
