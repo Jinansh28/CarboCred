@@ -14,7 +14,7 @@ async function main() {
     const tokenAddress = await creditToken.getAddress();
 
     const CarbonMarketplace = await ethers.getContractFactory("CarbonMarketplace");
-    const marketplace = await CarbonMarketplace.deploy(tokenAddress, deployer.address);
+    const marketplace = await CarbonMarketplace.deploy(tokenAddress);
     await marketplace.waitForDeployment();
     const marketplaceAddress = await marketplace.getAddress();
 

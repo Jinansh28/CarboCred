@@ -36,8 +36,7 @@ describe("CarboCred Ecosystem (ERC-1155)", function () {
         // Deploy CarbonMarketplace
         const CarbonMarketplace = await ethers.getContractFactory("CarbonMarketplace");
         marketplace = await CarbonMarketplace.deploy(
-            await creditToken.getAddress(),
-            admin.address
+            await creditToken.getAddress()
         );
         await marketplace.waitForDeployment();
 
@@ -153,6 +152,49 @@ describe("CarboCred Ecosystem (ERC-1155)", function () {
                 .safeTransferFrom(seller.address, buyer.address, CREDIT_TOKEN, 50n, "0x");
             expect(await creditToken.balanceOf(buyer.address, CREDIT_TOKEN)).to.equal(50n);
         });
+
+        // ── Self-retirement (retireOwnCredits) ────────────────────────────────────
+
+        it("retireOwnCredits burns credits and automatically clears debt up to amount", async function () {
+            await creditToken.connect(backend).awardCredits(seller.address, 100n, "solar");
+            await creditToken.connect(backend).recordDebt(seller.address, 30n, "emissions");
+
+            await expect(creditToken.connect(seller).retireOwnCredits(50n))
+                .to.emit(creditToken, "DebtCleared")
+                .withArgs(seller.address, 30n)
+                .and.to.emit(creditToken, "CreditsRetired")
+                .withArgs(seller.address, 50n);
+
+            expect(await creditToken.balanceOf(seller.address, CREDIT_TOKEN)).to.equal(50n);
+            expect(await creditToken.balanceOf(seller.address, DEBT_TOKEN)).to.equal(0n);
+            expect(await creditToken.netCredits(seller.address)).to.equal(50n);
+        });
+
+        it("retireOwnCredits works when entity has no debt (emits CreditsRetired only)", async function () {
+            await creditToken.connect(backend).awardCredits(seller.address, 100n, "solar");
+
+            await expect(creditToken.connect(seller).retireOwnCredits(40n))
+                .to.emit(creditToken, "CreditsRetired")
+                .withArgs(seller.address, 40n)
+                .and.to.not.emit(creditToken, "DebtCleared");
+
+            expect(await creditToken.balanceOf(seller.address, CREDIT_TOKEN)).to.equal(60n);
+            expect(await creditToken.balanceOf(seller.address, DEBT_TOKEN)).to.equal(0n);
+            expect(await creditToken.netCredits(seller.address)).to.equal(60n);
+        });
+
+        it("retireOwnCredits reverts on zero amount", async function () {
+            await expect(
+                creditToken.connect(seller).retireOwnCredits(0n)
+            ).to.be.revertedWith("CCT: zero amount");
+        });
+
+        it("retireOwnCredits reverts on insufficient credits", async function () {
+            await creditToken.connect(backend).awardCredits(seller.address, 20n, "solar");
+            await expect(
+                creditToken.connect(seller).retireOwnCredits(50n)
+            ).to.be.revertedWith("CCT: insufficient credits");
+        });
     });
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -211,6 +253,19 @@ describe("CarboCred Ecosystem (ERC-1155)", function () {
             ).to.be.revertedWith("Marketplace: zero amount");
         });
 
+        it("should revert listing with zero price", async function () {
+            await expect(
+                marketplace.connect(seller).listCredits(CREDIT_AMOUNT, 0n)
+            ).to.be.revertedWith("Marketplace: zero price");
+        });
+
+        it("should revert listing when amount * pricePerCredit overflows", async function () {
+            const hugePrice = ethers.MaxUint256 / 10n;
+            await expect(
+                marketplace.connect(seller).listCredits(CREDIT_AMOUNT, hugePrice)
+            ).to.be.revertedWith("Marketplace: total price overflow");
+        });
+
         // ── cancelListing ─────────────────────────────────────────────────────────
 
         it("seller can cancel their own listing", async function () {
@@ -219,6 +274,14 @@ describe("CarboCred Ecosystem (ERC-1155)", function () {
                 .to.emit(marketplace, "ListingCancelled")
                 .withArgs(0n, seller.address);
             expect((await marketplace.getListing(0n)).status).to.equal(2n); // Cancelled
+        });
+
+        it("cannot cancel an already cancelled listing (double-cancel reverts)", async function () {
+            await marketplace.connect(seller).listCredits(CREDIT_AMOUNT, PRICE_PER_CREDIT);
+            await marketplace.connect(seller).cancelListing(0n);
+            await expect(
+                marketplace.connect(seller).cancelListing(0n)
+            ).to.be.revertedWith("Marketplace: listing not open");
         });
 
         it("non-seller cannot cancel a listing", async function () {
@@ -248,21 +311,65 @@ describe("CarboCred Ecosystem (ERC-1155)", function () {
             expect((await marketplace.getListing(0n)).status).to.equal(1n);
         });
 
-        it("buyer receives credits, net position improves when buyer had debt", async function () {
+        it("buyer auto-offsets debt without double-counting when buyer had debt", async function () {
             // Buyer is a net emitter with 50 debt
             await creditToken.connect(backend).recordDebt(buyer.address, 50n, "factory");
             expect(await creditToken.netCredits(buyer.address)).to.equal(-50n);
 
             await marketplace.connect(seller).listCredits(CREDIT_AMOUNT, PRICE_PER_CREDIT);
             const totalPrice = CREDIT_AMOUNT * PRICE_PER_CREDIT;
-            await marketplace.connect(buyer).purchaseListing(0n, { value: totalPrice });
+
+            await expect(marketplace.connect(buyer).purchaseListing(0n, { value: totalPrice }))
+                .to.emit(creditToken, "CreditsRetired")
+                .withArgs(buyer.address, 50n)
+                .and.to.emit(creditToken, "DebtCleared")
+                .withArgs(buyer.address, 50n)
+                .and.to.emit(creditToken, "BalanceUpdated")
+                .withArgs(seller.address, buyer.address, 100n, 100n, 50n)
+                .and.to.emit(marketplace, "AutoOffsetApplied")
+                .withArgs(buyer.address, 50n);
 
             // Auto-offset: buyer had 50 DEBT, purchased 100 CREDIT.
-            // Contract burns min(50, 100) = 50 DEBT_TOKEN automatically.
-            // Buyer now has: 100 CREDIT, 0 DEBT → netCredits = +100
-            expect(await creditToken.balanceOf(buyer.address, CREDIT_TOKEN)).to.equal(100n);
-            expect(await creditToken.balanceOf(buyer.address, DEBT_TOKEN)).to.equal(0n);  // auto-burned
-            expect(await creditToken.netCredits(buyer.address)).to.equal(100n); // fully offset
+            // 50 CREDIT retired against 50 DEBT; remaining 50 CREDIT transferred to buyer.
+            // Seller loses all 100 CREDIT (200 -> 100); buyer ends with 50 CREDIT, 0 DEBT -> netCredits = +50.
+            expect(await creditToken.balanceOf(seller.address, CREDIT_TOKEN)).to.equal(100n);
+            expect(await creditToken.balanceOf(buyer.address, CREDIT_TOKEN)).to.equal(50n);
+            expect(await creditToken.balanceOf(buyer.address, DEBT_TOKEN)).to.equal(0n);
+            expect(await creditToken.netCredits(buyer.address)).to.equal(50n);
+        });
+
+        it("buyer with debt larger than purchase retires all purchased credits and reduces remaining debt", async function () {
+            // Buyer has 150 debt, buys 100 credits -> 0 credits, 50 debt, netCredits = -50
+            await creditToken.connect(backend).recordDebt(buyer.address, 150n, "heavy factory");
+            expect(await creditToken.netCredits(buyer.address)).to.equal(-150n);
+
+            await marketplace.connect(seller).listCredits(CREDIT_AMOUNT, PRICE_PER_CREDIT);
+            const totalPrice = CREDIT_AMOUNT * PRICE_PER_CREDIT;
+
+            await expect(marketplace.connect(buyer).purchaseListing(0n, { value: totalPrice }))
+                .to.emit(creditToken, "CreditsRetired")
+                .withArgs(buyer.address, 100n)
+                .and.to.emit(creditToken, "DebtCleared")
+                .withArgs(buyer.address, 100n)
+                .and.to.emit(creditToken, "BalanceUpdated")
+                .withArgs(seller.address, buyer.address, 100n, 100n, 0n);
+
+            expect(await creditToken.balanceOf(seller.address, CREDIT_TOKEN)).to.equal(100n);
+            expect(await creditToken.balanceOf(buyer.address, CREDIT_TOKEN)).to.equal(0n);
+            expect(await creditToken.balanceOf(buyer.address, DEBT_TOKEN)).to.equal(50n);
+            expect(await creditToken.netCredits(buyer.address)).to.equal(-50n);
+        });
+
+        it("post-listing debt gain by seller prevents purchaseListing", async function () {
+            await marketplace.connect(seller).listCredits(CREDIT_AMOUNT, PRICE_PER_CREDIT);
+            const totalPrice = CREDIT_AMOUNT * PRICE_PER_CREDIT;
+
+            // Seller had 200 credits and 100 locked; gaining 150 debt drops net to 50 < 100 locked
+            await creditToken.connect(backend).recordDebt(seller.address, 150n, "post-listing emission");
+
+            await expect(
+                marketplace.connect(buyer).purchaseListing(0n, { value: totalPrice })
+            ).to.be.revertedWith("Marketplace: seller net position degraded since listing (debt gained)");
         });
 
         it("should revert purchase with incorrect ETH", async function () {

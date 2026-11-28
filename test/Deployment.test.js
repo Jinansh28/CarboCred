@@ -18,7 +18,7 @@ describe("CarboCred Deployment & Role Setup (ESM)", function () {
         const tokenAddress = await creditToken.getAddress();
 
         const CarbonMarketplace = await ethers.getContractFactory("CarbonMarketplace");
-        const marketplace = await CarbonMarketplace.deploy(tokenAddress, deployer.address);
+        const marketplace = await CarbonMarketplace.deploy(tokenAddress);
         await marketplace.waitForDeployment();
         const marketplaceAddress = await marketplace.getAddress();
 
@@ -58,9 +58,9 @@ describe("CarboCred Deployment & Role Setup (ESM)", function () {
         await marketplace.connect(buyer).purchaseListing(0n, { value: 100n * pricePerCredit });
 
         expect(await creditToken.balanceOf(seller.address, 0n)).to.equal(150n);
-        expect(await creditToken.balanceOf(buyer.address, 0n)).to.equal(100n);
+        expect(await creditToken.balanceOf(buyer.address, 0n)).to.equal(50n);
         expect(await creditToken.balanceOf(buyer.address, 1n)).to.equal(0n);
-        expect(await creditToken.netCredits(buyer.address)).to.equal(100n);
+        expect(await creditToken.netCredits(buyer.address)).to.equal(50n);
     });
 
     it("supports scripts/getAddresses.js deployment pattern with deployer as backend wallet", async function () {

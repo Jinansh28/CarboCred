@@ -11,6 +11,7 @@ const CARBON_CREDIT_TOKEN_ABI = [
     "event CreditsAwarded(address indexed entity, uint256 amount, string reason)",
     "event DebtRecorded(address indexed entity, uint256 amount, string reason)",
     "event DebtCleared(address indexed entity, uint256 amount)",
+    "event CreditsRetired(address indexed entity, uint256 amount)",
     "event BalanceUpdated(address indexed seller, address indexed buyer, uint256 amount, uint256 sellerCreditBalance, uint256 buyerCreditBalance)",
 ];
 
@@ -94,6 +95,15 @@ export function startListeners(onEvent) {
     tokenContract.on("DebtCleared", (entity, amount, event) => {
         onEvent({
             type: "DebtCleared",
+            entity,
+            amount: amount.toString(),
+            txHash: event.log.transactionHash,
+        });
+    });
+
+    tokenContract.on("CreditsRetired", (entity, amount, event) => {
+        onEvent({
+            type: "CreditsRetired",
             entity,
             amount: amount.toString(),
             txHash: event.log.transactionHash,

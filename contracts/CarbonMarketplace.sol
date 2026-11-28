@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./CarbonCreditToken.sol";
 
@@ -40,7 +39,7 @@ import "./CarbonCreditToken.sol";
  *   - ETH forwarded directly to seller; never custodied by this contract.
  *   - No ERC-1155 setApprovalForAll needed — marketplace holds MARKETPLACE_ROLE.
  */
-contract CarbonMarketplace is Ownable, ReentrancyGuard {
+contract CarbonMarketplace is ReentrancyGuard {
 
     // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -108,9 +107,8 @@ contract CarbonMarketplace is Ownable, ReentrancyGuard {
 
     /**
      * @param _creditToken Address of the deployed CarbonCreditToken (ERC-1155).
-     * @param _admin       Ownable admin address.
      */
-    constructor(address _creditToken, address _admin) Ownable(_admin) {
+    constructor(address _creditToken) {
         require(_creditToken != address(0), "Marketplace: zero token address");
         creditToken = CarbonCreditToken(_creditToken);
     }
@@ -140,6 +138,10 @@ contract CarbonMarketplace is Ownable, ReentrancyGuard {
     {
         require(amount > 0,         "Marketplace: zero amount");
         require(pricePerCredit > 0, "Marketplace: zero price");
+        require(
+            amount <= type(uint256).max / pricePerCredit,
+            "Marketplace: total price overflow"
+        );
 
         // ── Net position gate (v2: deducts already-locked credits) ────────────
         // availableNet = netCredits(seller) - lockedCredits[seller]

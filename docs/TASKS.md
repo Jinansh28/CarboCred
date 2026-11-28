@@ -36,7 +36,7 @@
 
 ## Milestone 1: Smart Contract & Accounting Integrity (`P0`)
 
-- [ ] **M1.1 — Fix `settleTransferWithAutoOffset` Double-Counting Bug** *(Refs: C-03, P-03, P0-3)*
+- [x] **M1.1 — Fix `settleTransferWithAutoOffset` Double-Counting Bug** *(Refs: C-03, P-03, P0-3)*
   - **Steps:**
     1. In `contracts/CarbonCreditToken.sol` (L214–250):
        - Compute `debtBurned = buyerDebt < amount ? buyerDebt : amount`.

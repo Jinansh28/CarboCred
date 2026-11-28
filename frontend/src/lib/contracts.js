@@ -10,9 +10,11 @@ export const CARBON_CREDIT_TOKEN_ABI = [
     { type: 'function', name: 'getPosition', stateMutability: 'view', inputs: [{ name: 'entity', type: 'address' }], outputs: [{ name: 'credits', type: 'uint256' }, { name: 'debt', type: 'uint256' }] },
     { type: 'function', name: 'CREDIT_TOKEN', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint256' }] },
     { type: 'function', name: 'DEBT_TOKEN', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint256' }] },
+    { type: 'function', name: 'retireOwnCredits', stateMutability: 'nonpayable', inputs: [{ name: 'amount', type: 'uint256' }], outputs: [] },
     { type: 'event', name: 'CreditsAwarded', inputs: [{ name: 'entity', type: 'address', indexed: true }, { name: 'amount', type: 'uint256', indexed: false }, { name: 'reason', type: 'string', indexed: false }] },
     { type: 'event', name: 'DebtRecorded', inputs: [{ name: 'entity', type: 'address', indexed: true }, { name: 'amount', type: 'uint256', indexed: false }, { name: 'reason', type: 'string', indexed: false }] },
     { type: 'event', name: 'DebtCleared', inputs: [{ name: 'entity', type: 'address', indexed: true }, { name: 'amount', type: 'uint256', indexed: false }] },
+    { type: 'event', name: 'CreditsRetired', inputs: [{ name: 'entity', type: 'address', indexed: true }, { name: 'amount', type: 'uint256', indexed: false }] },
     { type: 'event', name: 'BalanceUpdated', inputs: [{ name: 'seller', type: 'address', indexed: true }, { name: 'buyer', type: 'address', indexed: true }, { name: 'amount', type: 'uint256', indexed: false }, { name: 'sellerCreditBalance', type: 'uint256', indexed: false }, { name: 'buyerCreditBalance', type: 'uint256', indexed: false }] },
 ]
 

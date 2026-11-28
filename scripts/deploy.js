@@ -41,7 +41,7 @@ async function main() {
     // ── Step 2: Deploy CarbonMarketplace ──────────────────────────────────────
     console.log("\n[2/4] Deploying CarbonMarketplace...");
     const CarbonMarketplace = await ethers.getContractFactory("CarbonMarketplace");
-    const marketplace = await CarbonMarketplace.deploy(tokenAddress, deployer.address);
+    const marketplace = await CarbonMarketplace.deploy(tokenAddress);
     await marketplace.waitForDeployment();
     const marketplaceAddress = await marketplace.getAddress();
     console.log("      CarbonMarketplace deployed to:", marketplaceAddress);

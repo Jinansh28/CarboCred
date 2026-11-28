@@ -65,6 +65,9 @@ contract CarbonCreditToken is ERC1155, AccessControl, ReentrancyGuard {
         string  reason    // e.g. "Factory emissions Jan 2025"
     );
 
+    /// @dev Emitted when credits are permanently retired (self-retired or auto-offset).
+    event CreditsRetired(address indexed entity, uint256 amount);
+
     /// @dev Emitted when backend burns/clears emission debt (entity retires credits).
     event DebtCleared(address indexed entity, uint256 amount);
 
@@ -156,6 +159,32 @@ contract CarbonCreditToken is ERC1155, AccessControl, ReentrancyGuard {
         _burn(entity, CREDIT_TOKEN, amount);
     }
 
+    /**
+     * @notice Allows any entity to retire (burn) their own CREDIT_TOKEN.
+     *         If the caller also holds DEBT_TOKEN, up to `amount` of debt is
+     *         automatically burned as well.
+     * @param amount  Number of CREDIT_TOKEN units to retire (> 0).
+     */
+    function retireOwnCredits(uint256 amount) external nonReentrant {
+        require(amount > 0, "CCT: zero amount");
+        require(
+            balanceOf(msg.sender, CREDIT_TOKEN) >= amount,
+            "CCT: insufficient credits"
+        );
+
+        _burn(msg.sender, CREDIT_TOKEN, amount);
+
+        uint256 callerDebt = balanceOf(msg.sender, DEBT_TOKEN);
+        uint256 debtBurned = callerDebt < amount ? callerDebt : amount;
+
+        if (debtBurned > 0) {
+            _burn(msg.sender, DEBT_TOKEN, debtBurned);
+            emit DebtCleared(msg.sender, debtBurned);
+        }
+
+        emit CreditsRetired(msg.sender, amount);
+    }
+
     // ─── Marketplace Function ─────────────────────────────────────────────────
 
     /**
@@ -197,18 +226,21 @@ contract CarbonCreditToken is ERC1155, AccessControl, ReentrancyGuard {
     }
 
     /**
-     * @notice Transfer CREDIT_TOKEN from seller to buyer, then automatically
-     *         burn the buyer's DEBT_TOKEN up to the amount of credits received.
+     * @notice Transfer CREDIT_TOKEN from seller to buyer, retiring any portion
+     *         needed to auto-offset the buyer's existing DEBT_TOKEN.
      *
-     * This implements "Auto-Offset After Purchase":
-     *   - If the buyer is a carbon emitter (has DEBT_TOKEN), purchasing credits
-     *     immediately retires some or all of that debt.
-     *   - Burn amount = min(buyer's current DEBT_TOKEN balance, credits purchased).
-     *   - If the buyer has no debt, only the credit transfer happens.
+     * This implements "Auto-Offset After Purchase" without double-counting:
+     *   - debtBurned = min(buyer's current DEBT_TOKEN balance, credits purchased).
+     *   - netToBuyer = amount - debtBurned.
+     *   - `netToBuyer` CREDIT_TOKEN is transferred from seller to buyer (if > 0).
+     *   - `debtBurned` CREDIT_TOKEN is burned directly from seller and `debtBurned`
+     *     DEBT_TOKEN is burned from buyer (if > 0), avoiding an intermediate
+     *     onERC1155Received callback on buyer for retired credits.
      *
-     * @param seller  Credit seller (CREDIT_TOKEN transferred away).
-     * @param buyer   Credit buyer (CREDIT_TOKEN received, DEBT_TOKEN burned).
-     * @param amount  Amount of CREDIT_TOKEN to transfer.
+     * @param seller  Credit seller (loses `amount` CREDIT_TOKEN in total).
+     * @param buyer   Credit buyer (receives `amount - debtBurned` CREDIT_TOKEN,
+     *                loses `debtBurned` DEBT_TOKEN).
+     * @param amount  Total CREDIT_TOKEN purchased.
      * @return debtBurned  Amount of DEBT_TOKEN burned from the buyer (0 if none).
      */
     function settleTransferWithAutoOffset(
@@ -224,8 +256,22 @@ contract CarbonCreditToken is ERC1155, AccessControl, ReentrancyGuard {
             "CCT: seller insufficient credits"
         );
 
-        // ── Step 1: Transfer credits seller → buyer ───────────────────────────
-        _safeTransferFrom(seller, buyer, CREDIT_TOKEN, amount, "");
+        uint256 buyerDebt = balanceOf(buyer, DEBT_TOKEN);
+        debtBurned = buyerDebt < amount ? buyerDebt : amount;
+        uint256 netToBuyer = amount - debtBurned;
+
+        if (netToBuyer > 0) {
+            _safeTransferFrom(seller, buyer, CREDIT_TOKEN, netToBuyer, "");
+        }
+
+        if (debtBurned > 0) {
+            // Burn retired credits directly from seller to avoid an intermediate
+            // onERC1155Received callback on buyer for credits immediately retired.
+            _burn(seller, CREDIT_TOKEN, debtBurned);
+            _burn(buyer, DEBT_TOKEN, debtBurned);
+            emit CreditsRetired(buyer, debtBurned);
+            emit DebtCleared(buyer, debtBurned);
+        }
 
         emit BalanceUpdated(
             seller,
@@ -234,17 +280,6 @@ contract CarbonCreditToken is ERC1155, AccessControl, ReentrancyGuard {
             balanceOf(seller, CREDIT_TOKEN),
             balanceOf(buyer, CREDIT_TOKEN)
         );
-
-        // ── Step 2: Auto-offset buyer's debt ─────────────────────────────────
-        // Burn up to `amount` of the buyer's DEBT_TOKEN.
-        // We cap at the buyer's actual debt balance so we never over-burn.
-        uint256 buyerDebt = balanceOf(buyer, DEBT_TOKEN);
-        debtBurned = buyerDebt < amount ? buyerDebt : amount;
-
-        if (debtBurned > 0) {
-            _burn(buyer, DEBT_TOKEN, debtBurned);
-            emit DebtCleared(buyer, debtBurned);
-        }
 
         return debtBurned;
     }
